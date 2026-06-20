@@ -149,7 +149,22 @@ class CeisaClient
     }
 
     /**
+     * Apakah mock mode aktif (CEISA_MOCK_ENABLED=true)?
+     * Saat aktif, request tidak benar-benar dikirim ke gateway BC —
+     * CeisaClient merespons dengan synthetic success untuk testing.
+     */
+    public function isMockEnabled(): bool
+    {
+        return (bool) config('ceisa.mock_enabled', false);
+    }
+
+    /**
      * Generic request dengan logging ke ceisa_api_logs.
+     *
+     * Catatan: gunakan http_errors=false agar response 4xx/5xx dari gateway
+     * tidak dilempar sebagai exception — pemanggil (PibSubmissionService) yang
+     * menentukan tindakan berdasarkan status code. Ini juga mencegah runtime
+     * exception saat QUEUE_CONNECTION=sync.
      */
     protected function request(string $method, string $path, array $body = [], array $query = []): array
     {
@@ -159,8 +174,35 @@ class CeisaClient
 
         $logPayload = ['method' => $method, 'path' => $path, 'body' => $body, 'query' => $query];
 
+        // --- Mock mode: return synthetic response tanpa memanggil gateway ---
+        if ($this->isMockEnabled()) {
+            $mockBody = $this->buildMockResponse($method, $path, $body);
+            $mockRaw = json_encode($mockBody);
+            $durationMs = (int) ((microtime(true) - $start) * 1000);
+
+            CeisaApiLog::logOutbound(
+                endpoint: $endpoint,
+                method: $method,
+                request: $logPayload,
+                response: $mockBody,
+                code: 200,
+                durationMs: $durationMs,
+            );
+
+            Log::info('CeisaClient mock response', [
+                'path' => $path,
+                'method' => $method,
+            ]);
+
+            return [
+                'status' => 200,
+                'body' => $mockBody,
+                'raw' => $mockRaw,
+            ];
+        }
+
         try {
-            $options = [];
+            $options = [RequestOptions::HTTP_ERRORS => false];
             if (!empty($query)) {
                 $options[RequestOptions::QUERY] = $query;
             }
@@ -210,5 +252,25 @@ class CeisaClient
 
             throw $e;
         }
+    }
+
+    /**
+     * Build synthetic response untuk mock mode.
+     *
+     * Format mock mengikuti kontrak OpenAPI placeholder:
+     * { responseId, nomorPendaftaran, status }
+     */
+    protected function buildMockResponse(string $method, string $path, array $body): array
+    {
+        $now = now();
+        $aju = $body['header']['nomorAju'] ?? ('MOCK-' . $now->timestamp);
+
+        return [
+            'responseId' => 'MOCK-' . strtoupper(sha1($aju . $now->timestamp)),
+            'nomorPendaftaran' => sprintf('%06d', random_int(1, 999999)),
+            'status' => 'AJU',
+            'message' => '[MOCK] Submission accepted. CEISA_MOCK_ENABLED=true, no real gateway call made.',
+            'received_at' => $now->toIso8601String(),
+        ];
     }
 }

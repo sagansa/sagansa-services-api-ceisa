@@ -8,6 +8,7 @@ use App\Models\PibDocument;
 use App\Services\PibSubmissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Fase 3 (submit) + Fase 6 (list/detail PIB & NOTUL).
@@ -51,15 +52,41 @@ class PibController extends Controller
             $pib->items()->createMany($data['items']);
         }
 
-        // Enqueue async submission
-        SubmitPibJob::dispatch($pib->id);
+        // Enqueue async submission.
+        //
+        // Catatan: ketika QUEUE_CONNECTION=sync, dispatch() menjalankan job
+        // seketika dan setiap exception dari job akan terlempar ke sini.
+        // Kita tangkap agar endpoint tetap mengembalikan 202 (document sudah
+        // tersimpan). Status terbaru di-reflect dari model yang sudah di-refresh.
+        $syncError = null;
+        try {
+            SubmitPibJob::dispatch($pib->id);
+        } catch (\Throwable $e) {
+            $syncError = $e->getMessage();
+            Log::warning('PIB submit job failed synchronously', [
+                'pib_id' => $pib->id,
+                'error' => $syncError,
+            ]);
+        }
 
-        return response()->json([
-            'message' => 'PIB enqueued for submission.',
+        // Refresh untuk mendapatkan status terbaru yang mungkin diubah job.
+        $pib->refresh();
+
+        $payload = [
+            'message' => $syncError === null
+                ? 'PIB enqueued for submission.'
+                : 'PIB saved, but synchronous submission failed. Use retry endpoint to resend.',
             'pib_id' => $pib->id,
             'aju_number' => $pib->aju_number,
             'status' => $pib->status,
-        ], 202);
+        ];
+
+        if ($syncError !== null) {
+            $payload['submission_error'] = $syncError;
+            $payload['mock_hint'] = 'Enable CEISA_MOCK_ENABLED=true for local end-to-end testing, or set the real OpenAPI endpoint via CEISA_PIB_SUBMIT_PATH.';
+        }
+
+        return response()->json($payload, 202);
     }
 
     /**

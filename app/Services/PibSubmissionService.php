@@ -47,12 +47,33 @@ class PibSubmissionService
             return ['success' => false, 'response_id' => null, 'errors' => $validation['errors']];
         }
 
-        // 3) Kirim ke gateway (endpoint path WAJIB diverifikasi via OpenAPI)
+        // 3) Kirim ke gateway (endpoint path dari config, diverifikasi via OpenAPI)
         try {
-            // CATATAN: path submit PIB harus dikonfirmasi dari OpenAPI Portal.
-            // Placeholder: /v1/pib/submit
-            $response = $this->client->post('/v1/pib/submit', $payload);
+            $endpoint = (string) config('ceisa.endpoints.pib_submit', '/v1/pib/submit');
+            $response = $this->client->post($endpoint, $payload);
+            $status = $response['status'];
             $body = $response['body'];
+
+            // CeisaClient memakai http_errors=false, jadi kita evaluasi status code di sini.
+            // 2xx dianggap sukses; 4xx/5xx → gagal dengan pesan dari gateway.
+            if ($status < 200 || $status >= 300) {
+                $errMsg = $body['message']
+                    ?? $body['error']
+                    ?? $response['raw']
+                    ?? "Gateway returned HTTP {$status}";
+
+                Log::warning('PIB submission rejected by gateway', [
+                    'pib_id' => $doc->id,
+                    'http_status' => $status,
+                    'gateway_body' => $body,
+                ]);
+
+                return [
+                    'success' => false,
+                    'response_id' => null,
+                    'errors' => ["[HTTP {$status}] {$errMsg}"],
+                ];
+            }
 
             // 4) Simpan response ID / nomor pendaftaran
             $responseId = $body['responseId'] ?? $body['id'] ?? null;

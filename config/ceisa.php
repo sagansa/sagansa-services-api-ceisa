@@ -18,6 +18,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Sandbox Mock Mode
+    |--------------------------------------------------------------------------
+    | When enabled, CeisaClient returns synthetic success responses instead
+    | of calling the real gateway. Useful for local/sandbox end-to-end testing
+    | when the real OpenAPI endpoint is not yet available or IP is not whitelisted.
+    | All mock calls are still logged to ceisa_api_logs for traceability.
+    */
+    'mock_enabled' => env('CEISA_MOCK_ENABLED', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | CEISA API Endpoints (verifikasi via OpenAPI Portal)
+    |--------------------------------------------------------------------------
+    | Path relatif terhadap base URL gateway. Saat real endpoint diketahui
+    | dari OpenAPI Portal, cukup update env tanpa ubah kode.
+    */
+    'endpoints' => [
+        'pib_submit' => env('CEISA_PIB_SUBMIT_PATH', '/v1/pib/submit'),
+        'pib_status' => env('CEISA_PIB_STATUS_PATH', '/v1/pib/{aju}/status'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Default Credentials (fallback if DB ceisa_credentials empty)
     |--------------------------------------------------------------------------
     | In production these are stored encrypted in the `ceisa_credentials` table.
