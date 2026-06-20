@@ -35,14 +35,27 @@ class PibPayloadBuilder
         return [
             'nomorAju' => $doc->aju_number,
             'kantorPabean' => $doc->kantor_pabean,
-            'npwpImportir' => $doc->importir_npwp,
+            'npwpImportir' => $this->normalizeNpwp($doc->importir_npwp),
             'namaImportir' => $doc->importir_name,
-            'npwpPpjk' => $doc->ppjk_npwp,
+            'npwpPpjk' => $this->normalizeNpwp($doc->ppjk_npwp),
             'jenisTransaksi' => $doc->jenis_transaksi,
             'saranaAngkut' => $doc->sarana_angkut,
             'pelabuhanMuat' => $doc->pelabuhan_muat,
             'pelabuhanBongkar' => $doc->pelabuhan_bongkar,
         ];
+    }
+
+    /**
+     * Normalize NPWP: strip non-digit characters (dots, dashes, spaces).
+     * CEISA expects raw digits (15-16 chars), e.g. "012345678901000".
+     */
+    private function normalizeNpwp(?string $npwp): ?string
+    {
+        if ($npwp === null || $npwp === '') {
+            return $npwp;
+        }
+
+        return preg_replace('/\D/', '', $npwp);
     }
 
     /**

@@ -26,6 +26,11 @@ class CeisaClient
 
     /**
      * Guzzle instance dengan base_uri & default headers.
+     *
+     * Catatan: gateway CEISA hanya mendukung HTTP/1.1 (lihat ALPN saat
+     * TLS handshake), sehingga kita paksa 'curl' handler + HTTP/1.1 agar
+     * Guzzle tidak mencoba upgrade ke HTTP/2 yang dapat menyebabkan
+     * "unexpected eof while reading" (cURL error 56).
      */
     protected function client(): Client
     {
@@ -34,8 +39,81 @@ class CeisaClient
         return new Client([
             'base_uri' => $this->credentials->getGatewayUrl(),
             'timeout' => (float) config('ceisa.http_timeout', 30),
+            'connect_timeout' => (float) config('ceisa.connect_timeout', 10),
             'headers' => $this->buildHeaders($creds['application_id'], $creds['api_key']),
+            // Paksa HTTP/1.1 (gateway BC tidak advertise h2 meskipun TLS 1.3).
+            'version' => 1.1,
+            'curl' => [
+                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            ],
         ]);
+    }
+
+    /**
+     * Ping gateway untuk mengecek konektivitas (Fase 2 — test koneksi).
+     *
+     * Berbeda dengan get()/post(): pakai http_errors=false sehingga response
+     * 4xx/5xx tidak dilempar sebagai exception. Yang penting bagi pemanggil
+     * adalah apakah gateway memberi respons HTTP apa pun (reachable) atau
+     * justru gagal total (connection/SSL error).
+     *
+     * @return array{reachable: bool, status: int, raw: string, error: ?string}
+     */
+    public function ping(?string $path = null): array
+    {
+        $path = $path ?: (string) config('ceisa.test_path', '/v1/pib/submit');
+        $start = microtime(true);
+        $gateway = $this->credentials->getGatewayUrl();
+
+        try {
+            $response = $this->client()->get($path, [
+                RequestOptions::HTTP_ERRORS => false,
+            ]);
+            $durationMs = (int) ((microtime(true) - $start) * 1000);
+            $code = $response->getStatusCode();
+            $raw = (string) $response->getBody();
+
+            CeisaApiLog::logOutbound(
+                endpoint: $path,
+                method: 'GET',
+                request: ['ping' => true],
+                response: ['status' => $code, 'raw' => $raw],
+                code: $code,
+                durationMs: $durationMs,
+            );
+
+            return [
+                'reachable' => true,
+                'status' => $code,
+                'raw' => $raw,
+                'error' => null,
+            ];
+        } catch (\Throwable $e) {
+            $durationMs = (int) ((microtime(true) - $start) * 1000);
+
+            CeisaApiLog::logOutbound(
+                endpoint: $path,
+                method: 'GET',
+                request: ['ping' => true],
+                response: ['error' => $e->getMessage()],
+                code: 0,
+                durationMs: $durationMs,
+                error: $e->getMessage(),
+            );
+
+            Log::error('CeisaClient ping failed', [
+                'gateway' => $gateway,
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'reachable' => false,
+                'status' => 0,
+                'raw' => '',
+                'error' => $e->getMessage(),
+            ];
+        }
     }
 
     /**

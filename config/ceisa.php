@@ -39,8 +39,19 @@ return [
     |--------------------------------------------------------------------------
     */
     'http_timeout' => (int) env('CEISA_HTTP_TIMEOUT', 30),
+    'connect_timeout' => (int) env('CEISA_CONNECT_TIMEOUT', 10),
     'submit_tries' => (int) env('CEISA_SUBMIT_TRIES', 3),
     'submit_backoff' => (int) env('CEISA_SUBMIT_BACKOFF', 300),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Test/health path untuk cek koneksi gateway (Fase 2)
+    |--------------------------------------------------------------------------
+    | Path yang di-hit oleh CeisaClient::ping(). WAJIB berupa path API nyata
+    | (bukan '/') karena gateway menutup koneksi tanpa respons HTTP untuk root.
+    | Setiap HTTP response code (termasuk 401/403/404) dianggap "reachable".
+    */
+    'test_path' => env('CEISA_TEST_PATH', '/v1/pib/submit'),
 
     /*
     |--------------------------------------------------------------------------
