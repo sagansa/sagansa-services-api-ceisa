@@ -39,7 +39,22 @@ class NotificationDispatcher
                 continue;
             }
 
-            SendNotificationJob::dispatch($doc->id, $channelName, $event, $urgency, $data);
+            // Isolasi kegagalan per-channel: pada QUEUE_CONNECTION=sync (dev),
+            // SendNotificationJob::dispatch() berjalan inline dan dapat melempar
+            // exception (mis. FCM belum dikonfigurasi). Kegagalan notifikasi tidak
+            // boleh menggagalkan pemrosesan webhook (NFR: webhook tetap 200 OK).
+            // Pada queue asli (redis), dispatch() hanya meng-enqueue dan tidak throw,
+            // sehingga retry semantics tetap utuh.
+            try {
+                SendNotificationJob::dispatch($doc->id, $channelName, $event, $urgency, $data);
+            } catch (\Throwable $e) {
+                Log::warning('Notification dispatch gagal (diisolasi, tidak membatalkan webhook)', [
+                    'channel' => $channelName,
+                    'pib_document_id' => $doc->id,
+                    'event' => $event,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
