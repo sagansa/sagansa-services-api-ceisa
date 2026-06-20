@@ -24,6 +24,9 @@ Route::prefix('v1')->group(function () {
     // Fase 2 — Manajemen Kredensial
     require __DIR__.'/api/v1/credentials.php';
 
+    // H2H User Authentication (openapi-auth v1): /user/login, /user/update-token
+    require __DIR__.'/api/v1/auth.php';
+
     // Manifes (openapi-manifes, CEISA 4.0) — VERIFIED endpoints.
     // Fokus: GET status by nomorAju + draft/kirim/rekon/inward/outward.
     require __DIR__.'/api/v1/manifes.php';

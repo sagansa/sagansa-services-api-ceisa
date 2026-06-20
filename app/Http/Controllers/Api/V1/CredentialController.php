@@ -19,16 +19,30 @@ class CredentialController extends Controller
 
     /**
      * Ambil status kredensial (masked).
+     *
+     * Menyertakan status OAuth2 (client_credentials grant) untuk Bearer token
+     * gateway BC, serta info token cache (expired time, masih-valid flag).
      */
     public function show(): JsonResponse
     {
         $creds = $this->service->getCredentials();
+        $credential = $this->service->getActiveCredential();
 
         return response()->json([
             'application_id' => $creds['application_id'] ? $this->mask($creds['application_id']) : null,
             'gateway_mode' => $creds['gateway_mode'],
             'gateway_url' => $this->service->getGatewayUrl(),
             'is_configured' => $this->service->isConfigured(),
+            // OAuth2 (Client Credentials Grant untuk Bearer gateway BC)
+            'oauth' => [
+                'is_configured' => $this->service->isOAuthConfigured(),
+                'token_url' => $creds['token_url'] ?: null,
+                'client_id' => $creds['client_id'] ? $this->mask($creds['client_id']) : null,
+                // Info token cache (tanpa membocorkan token itu sendiri)
+                'has_cached_token' => !empty($creds['access_token']),
+                'token_expires_at' => $creds['token_expires_at'] ?? null,
+                'token_is_valid' => $credential?->hasValidToken() ?? false,
+            ],
         ]);
     }
 
@@ -47,6 +61,10 @@ class CredentialController extends Controller
 
     /**
      * Simpan / update kredensial.
+     *
+     * Field OAuth2 (client_id, client_secret, token_url) optional. Jika
+     * dikirim kosong/null, tidak akan menimpa nilai yang sudah ada (kecuali
+     * dikirim string kosong eksplisit — dianggap "clear").
      */
     public function update(Request $request): JsonResponse
     {
@@ -54,17 +72,25 @@ class CredentialController extends Controller
             'application_id' => ['required', 'string', 'max:255'],
             'api_key' => ['required', 'string', 'max:512'],
             'gateway_mode' => ['required', Rule::in(['sandbox', 'production'])],
+            // OAuth2 fields (optional, untuk Bearer token gateway)
+            'client_id' => ['nullable', 'string', 'max:512'],
+            'client_secret' => ['nullable', 'string', 'max:512'],
+            'token_url' => ['nullable', 'string', 'max:255', 'url'],
         ]);
 
         $this->service->updateCredentials(
             $data['application_id'],
             $data['api_key'],
             $data['gateway_mode'],
+            clientId: $data['client_id'] ?? null,
+            clientSecret: $data['client_secret'] ?? null,
+            tokenUrl: $data['token_url'] ?? null,
         );
 
         return response()->json([
             'message' => 'Kredensial berhasil disimpan (encrypted).',
             'gateway_mode' => $data['gateway_mode'],
+            'oauth_configured' => $this->service->isOAuthConfigured(),
         ]);
     }
 

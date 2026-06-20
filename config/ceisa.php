@@ -34,6 +34,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | CEISA H2H User Authentication API (openapi-auth v1)
+    |--------------------------------------------------------------------------
+    | Sumber: doc/json/Export_openapi-auth-v2.json
+    |   Base URL: {gateway}/v1/openapi-auth
+    |   - POST /user/login
+    |   - POST /user/update-token
+    |
+    | Berbeda dari /v2/openapi (service endpoint), API auth user berada pada
+    | base path terpisah /v1/openapi-auth.
+    */
+    'openapi_auth_path' => env('CEISA_OPENAPI_AUTH_PATH', '/v1/openapi-auth'),
+    'auth_endpoints' => [
+        'user_login'        => env('CEISA_USER_LOGIN_PATH', '/user/login'),
+        'user_update_token' => env('CEISA_USER_UPDATE_TOKEN_PATH', '/user/update-token'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Backward-compat: service_paths (DEPRECATED sejak v2)
     |--------------------------------------------------------------------------
     | Di v2 base URL sudah unified. Key 'manifes' & 'pib' tetap dipertahankan
