@@ -8,13 +8,26 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Fase 3 — Orkestrasi submit PIB ke CEISA 4.0.
+ * Fase 3 — Orkestrasi submit PIB ke CEISA 4.0 OpenAPI v2.
+ *
+ * BREAKING v2: Sejak OpenAPI v2, submit dokumen pabean (termasuk PIB/BC 2.0)
+ * menggunakan endpoint unified:
+ *
+ *   POST /document?isFinal=&isRevision=
+ *
+ * Parameter query:
+ *   - isFinal    : true = data langsung dikirim; false = data menjadi draft.
+ *   - isRevision : true = data perbaikan (BCF); berlaku pada BC 3.0 dan TPB.
+ *
+ * Response v2 (lihat example OpenAPI v2 /document):
+ *   200 OK   : { "status":"OK", "message":"...", "idHeader":"uuid" }
+ *   400 FAIL : { "status":"FAILED", "message":"...", "nomorAju":"..." }
  *
  * Alur:
  * 1. Build payload via PibPayloadBuilder
  * 2. Validasi via PibSchemaValidator
- * 3. Kirim via CeisaClient
- * 4. Simpan response (Response ID / nomor pendaftaran)
+ * 3. Kirim via CeisaClient ke POST /document?isFinal=true
+ * 4. Simpan response (idHeader)
  * 5. Catat ke ceisa_status_histories
  */
 class PibSubmissionService
@@ -27,11 +40,13 @@ class PibSubmissionService
     }
 
     /**
-     * Submit PIB ke gateway CEISA.
+     * Submit PIB ke gateway CEISA (v2 endpoint POST /document).
      *
+     * @param bool $isFinal    true=langsung kirim (default), false=draft.
+     * @param bool $isRevision true=data perbaikan (BCF).
      * @return array{success: bool, response_id: ?string, errors: array}
      */
-    public function submit(PibDocument $doc): array
+    public function submit(PibDocument $doc, bool $isFinal = true, bool $isRevision = false): array
     {
         // 1) Build payload
         $payload = $this->builder->build($doc);
@@ -47,15 +62,18 @@ class PibSubmissionService
             return ['success' => false, 'response_id' => null, 'errors' => $validation['errors']];
         }
 
-        // 3) Kirim ke gateway (endpoint path dari config, diverifikasi via OpenAPI)
+        // 3) Kirim ke gateway v2: POST /document?isFinal=&isRevision=
         try {
-            $endpoint = (string) config('ceisa.endpoints.pib_submit', '/v1/pib/submit');
-            $response = $this->client->post($endpoint, $payload);
+            $endpoint = (string) config('ceisa.endpoints.document_submit', '/document');
+            $response = $this->client->post($endpoint, $payload, 'manifes', [
+                'isFinal'    => $isFinal,
+                'isRevision' => $isRevision,
+            ]);
             $status = $response['status'];
             $body = $response['body'];
 
             // CeisaClient memakai http_errors=false, jadi kita evaluasi status code di sini.
-            // 2xx dianggap sukses; 4xx/5xx → gagal dengan pesan dari gateway.
+            // v2: 200 OK → {status:"OK", idHeader}; 400 → {status:"FAILED", message}
             if ($status < 200 || $status >= 300) {
                 $errMsg = $body['message']
                     ?? $body['error']
@@ -75,12 +93,19 @@ class PibSubmissionService
                 ];
             }
 
-            // 4) Simpan response ID / nomor pendaftaran
-            $responseId = $body['responseId'] ?? $body['id'] ?? null;
-            $reference = $body['nomorPendaftaran'] ?? $body['reference'] ?? null;
+            // v2 response: { status:"OK", message, idHeader }
+            // backward-compat: cek juga field lama (responseId, id).
+            $responseId = $body['idHeader']
+                ?? $body['responseId']
+                ?? $body['id']
+                ?? null;
+            $reference = $body['nomorPendaftaran']
+                ?? $body['reference']
+                ?? null;
 
+            // 4) Simpan response ID / nomor pendaftaran
             $doc->update([
-                'status' => 'aju',
+                'status' => $isFinal ? 'aju' : 'draft',
                 'ceisa_response_id' => $responseId,
                 'ceisa_reference' => $reference,
                 'submitted_at' => now(),
@@ -88,7 +113,7 @@ class PibSubmissionService
 
             CeisaStatusHistory::create([
                 'pib_document_id' => $doc->id,
-                'status' => 'AJU',
+                'status' => $isFinal ? 'AJU' : 'DRAFT',
                 'urgency' => 'normal',
                 'raw_payload' => $body,
                 'received_at' => now(),
@@ -111,6 +136,26 @@ class PibSubmissionService
                 'errors' => [$e->getMessage()],
             ];
         }
+    }
+
+    /**
+     * Submit sebagai draft (isFinal=false).
+     *
+     * @return array{success: bool, response_id: ?string, errors: array}
+     */
+    public function submitDraft(PibDocument $doc): array
+    {
+        return $this->submit($doc, isFinal: false);
+    }
+
+    /**
+     * Submit sebagai perbaikan/BCF (isRevision=true, isFinal=true).
+     *
+     * @return array{success: bool, response_id: ?string, errors: array}
+     */
+    public function submitRevision(PibDocument $doc): array
+    {
+        return $this->submit($doc, isFinal: true, isRevision: true);
     }
 
     /**

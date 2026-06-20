@@ -5,15 +5,14 @@ namespace App\Services;
 use App\Models\CeisaApiLog;
 use GuzzleHttp\Client;
 use GuzzleHttp\RequestOptions;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 
 /**
  * HTTP Client wrapper untuk gateway CEISA 4.0.
  *
  * Otomatis:
- * - Memilih base URL sesuai gateway_mode (sandbox/production) + openapi_path v2.
- *   Sejak v2, semua service (manifes, pib, status, cnpibk, dll) pakai base
- *   unified: {gateway}/v2/openapi (lihat config('ceisa.openapi_path')).
+ * - Memilih base URL sesuai gateway_mode (sandbox/production) + service path.
  * - Menyisipkan DUA header auth (VERIFIED dari OpenAPI Portal):
  *     • `beacukai-api-key: <api_key>`  (APIKEY policy)
  *     • `Authorization: Bearer <token>` (OAuth2 policy)
@@ -35,12 +34,7 @@ class CeisaClient
     /**
      * Guzzle instance untuk sebuah service.
      *
-     * Sejak CEISA OpenAPI v2, base URL sudah unified (semua service pakai
-     * {gateway}/v2/openapi). Parameter $service dipertahankan untuk
-     * backward-compat tapi tidak lagi mengubah hasil (lihat
-     * CeisaCredentialService::buildServiceBaseUrl()).
-     *
-     * @param string $service 'manifes' | 'pib' (ignored di v2). Default 'manifes'.
+     * @param string $service 'manifes' | 'pib'. Default 'manifes'.
      */
     protected function client(string $service = 'manifes'): Client
     {
@@ -71,7 +65,7 @@ class CeisaClient
      */
     public function ping(?string $path = null): array
     {
-        $path = $path ?: (string) config('ceisa.test_path', '/v2/openapi/status/ping-test');
+        $path = $path ?: (string) config('ceisa.test_path', '/v1/openapi-manifes/manifes/nvocc/status/ping-test');
         $start = microtime(true);
         $gateway = $this->credentials->getGatewayUrl();
 
@@ -147,13 +141,11 @@ class CeisaClient
      * POST request dengan auto-logging + auto-auth-retry.
      *
      * @param string $service 'manifes' | 'pib'.
-     * @param array  $query  Query parameters (optional, v2 POST /document butuh
-     *                       ?isFinal=&isRevision=).
      * @return array{status: int, body: array, raw: string}
      */
-    public function post(string $path, array $payload, string $service = 'manifes', array $query = []): array
+    public function post(string $path, array $payload, string $service = 'manifes'): array
     {
-        return $this->request('POST', $path, $service, $payload, $query);
+        return $this->request('POST', $path, $service, $payload);
     }
 
     /**
@@ -164,16 +156,6 @@ class CeisaClient
     public function get(string $path, array $query = [], string $service = 'manifes'): array
     {
         return $this->request('GET', $path, $service, [], $query);
-    }
-
-    /**
-     * DELETE request dengan auto-logging + auto-auth-retry.
-     *
-     * @param string $service 'manifes' | 'pib'.
-     */
-    public function delete(string $path, array $query = [], string $service = 'manifes'): array
-    {
-        return $this->request('DELETE', $path, $service, [], $query);
     }
 
     /**
@@ -328,32 +310,21 @@ class CeisaClient
     {
         $now = now();
 
-        // v2 status endpoint: GET /status/{nomorAju}
-        // Response v2 (lihat OpenAPI v2 /status/{nomorAju}): { dataStatus:[], dataRespon:[] }
-        if (preg_match('#/status/\{?[^/]+\}?$#', $path) || str_contains($path, '/status/')) {
+        // Status endpoint khusus: mock history status manifes
+        if (str_contains($path, '/status/')) {
             $nomorAju = $body['nomorAju'] ?? basename($path);
 
             return [
-                'dataStatus' => [
+                'status' => 'OK',
+                'message' => '[MOCK] Status history',
+                'data' => [
                     [
-                        'nomorAju'     => $nomorAju,
-                        'kodeStatus'   => '01',
-                        'nomorDaftar'  => sprintf('%06d', random_int(1, 999999)),
-                        'tanggalDaftar'=> $now->toDateString(),
-                        'waktuStatus'  => $now->toDateTimeString(),
-                        'keterangan'   => '[MOCK] Dokumen dalam proses',
+                        'statusRespon'  => 'PROSES',
+                        'tanggalRespon' => $now->toIso8601String(),
+                        'keterangan'    => '[MOCK] Manifes dalam proses',
                     ],
                 ],
-                'dataRespon' => [],
-            ];
-        }
-
-        // v2 POST /document — submission response: { status, message, idHeader }
-        if (str_contains($path, '/document')) {
-            return [
-                'status'   => 'OK',
-                'message'  => '[MOCK] Sukses, Data Berhasil Ditambahkan',
-                'idHeader' => 'MOCK-' . strtoupper(sha1((string) $now->timestamp)),
+                'nomorAju' => $nomorAju,
             ];
         }
 

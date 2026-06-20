@@ -24,8 +24,15 @@ Route::prefix('v1')->group(function () {
     // Fase 2 — Manajemen Kredensial
     require __DIR__.'/api/v1/credentials.php';
 
+    // Manifes (openapi-manifes, CEISA 4.0) — VERIFIED endpoints.
+    // Fokus: GET status by nomorAju + draft/kirim/rekon/inward/outward.
+    require __DIR__.'/api/v1/manifes.php';
+
     // Fase 3 — Outbound PIB submit
     require __DIR__.'/api/v1/pib.php';
+
+    // CEISA 4.0 OpenAPI v2 — unified status endpoint (semua dokumen pabean)
+    require __DIR__.'/api/v1/status.php';
 
     // Fase 5 — Device token (FCM)
     require __DIR__.'/api/v1/device-token.php';
