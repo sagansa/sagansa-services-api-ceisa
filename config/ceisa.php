@@ -11,9 +11,16 @@ return [
     */
     'gateway_mode' => env('CEISA_GATEWAY_MODE', 'sandbox'),
 
+    // Catatan: `env('KEY', 'default')` mengembalikan string kosong (BUKAN default)
+    // bila env di-set kosong (mis. `CEISA_GATEWAY_PRODUCTION=`). Karena itu kita
+    // pakai `?:` agar empty-string dianggap unset dan fallback ke URL resmi BC.
+    // Ini mencegah mode=production ter-silent-fallback ke sandbox hanya karena
+    // env production dikosongkan di .env.
     'gateways' => [
-        'sandbox' => env('CEISA_GATEWAY_SANDBOX', 'https://apisdev-gw.beacukai.go.id'),
-        'production' => env('CEISA_GATEWAY_PRODUCTION', 'https://apis-gw.beacukai.go.id'),
+        'sandbox'    => env('CEISA_GATEWAY_SANDBOX', 'https://apisdev-gw.beacukai.go.id')
+                        ?: 'https://apisdev-gw.beacukai.go.id',
+        'production' => env('CEISA_GATEWAY_PRODUCTION', 'https://apis-gw.beacukai.go.id')
+                        ?: 'https://apis-gw.beacukai.go.id',
     ],
 
     /*
