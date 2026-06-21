@@ -117,6 +117,7 @@ class CeisaUserAuthService
                 'status' => 200,
                 'body' => $mockBody,
                 'raw' => $mockRaw,
+                'endpoint' => $fullUrl,
             ];
         }
 
@@ -155,6 +156,7 @@ class CeisaUserAuthService
                 'status' => $code,
                 'body' => is_array($decoded) ? $decoded : ['raw' => $raw],
                 'raw' => $raw,
+                'endpoint' => $fullUrl,
             ];
         } catch (\Throwable $e) {
             $durationMs = (int) ((microtime(true) - $start) * 1000);
@@ -179,6 +181,7 @@ class CeisaUserAuthService
                 'status' => 0,
                 'body' => ['error' => $e->getMessage()],
                 'raw' => '',
+                'endpoint' => $fullUrl,
             ];
         }
     }

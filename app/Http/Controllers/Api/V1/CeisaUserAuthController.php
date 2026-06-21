@@ -45,10 +45,7 @@ class CeisaUserAuthController extends Controller
 
         $result = $this->service->login($data);
 
-        return response()->json([
-            'status' => $result['status'],
-            'data' => $result['body'],
-        ], $result['status'] >= 200 && $result['status'] < 300 ? 200 : ($result['status'] ?: 502));
+        return $this->proxyResponse($result);
     }
 
     /**
@@ -66,9 +63,37 @@ class CeisaUserAuthController extends Controller
 
         $result = $this->service->updateToken($data);
 
-        return response()->json([
-            'status' => $result['status'],
-            'data' => $result['body'],
-        ], $result['status'] >= 200 && $result['status'] < 300 ? 200 : ($result['status'] ?: 502));
+        return $this->proxyResponse($result);
+    }
+
+    /**
+     * Format response proxy konsisten untuk login & update-token.
+     *
+     * Saat gateway BC mengembalikan error (>=400) atau body kosong, sertakan
+     * field `debug` berisi URL yang dihit + raw body BC agar mudah
+     * didiagnosis. Field ini hanya muncul saat error (sukses tetap bersih).
+     */
+    protected function proxyResponse(array $result): JsonResponse
+    {
+        $status = $result['status'] ?? 0;
+        $body = $result['body'] ?? [];
+        $raw = $result['raw'] ?? '';
+        $isOk = $status >= 200 && $status < 300;
+
+        $payload = [
+            'status' => $status,
+            'data' => $body,
+        ];
+
+        // Sertakan diagnostic saat error ATAU body kosong (mis. BC return
+        // empty 404). Membantu admin mengetahui URL mana yang dihit BC.
+        if (!$isOk || ($raw !== '' && $raw !== '[]' && $raw !== '{}')) {
+            $payload['debug'] = [
+                'gateway_url' => $result['endpoint'] ?? null,
+                'raw' => $raw,
+            ];
+        }
+
+        return response()->json($payload, $isOk ? 200 : ($status ?: 502));
     }
 }
