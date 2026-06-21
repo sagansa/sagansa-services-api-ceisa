@@ -74,6 +74,14 @@ class CeisaUserAuthService
     }
 
     /**
+     * Apakah mock mode aktif (CEISA_MOCK_ENABLED=true)?
+     */
+    protected function isMockEnabled(): bool
+    {
+        return (bool) config('ceisa.mock_enabled', false);
+    }
+
+    /**
      * Eksekusi request ke openapi-auth dengan logging + header gateway.
      *
      * Header mengikuti konfigurasi global (API Key + Bearer gateway via OAuth2).
@@ -88,6 +96,29 @@ class CeisaUserAuthService
         $baseUrl = $this->buildAuthBaseUrl();
         $fullUrl = rtrim($baseUrl, '/') . '/' . ltrim($path, '/');
         $start = microtime(true);
+
+        // --- Mock mode: return synthetic response tanpa memanggil gateway ---
+        // Memungkinkan testing end-to-end login + PIB list tanpa gateway BC.
+        if ($this->isMockEnabled()) {
+            $mockBody = $this->buildMockAuthResponse($path, $body);
+            $mockRaw = json_encode($mockBody);
+            $durationMs = (int) ((microtime(true) - $start) * 1000);
+
+            CeisaApiLog::logOutbound(
+                endpoint: $fullUrl,
+                method: $method,
+                request: $this->sanitizeForLog($body),
+                response: $this->sanitizeForLog($mockBody),
+                code: 200,
+                durationMs: $durationMs,
+            );
+
+            return [
+                'status' => 200,
+                'body' => $mockBody,
+                'raw' => $mockRaw,
+            ];
+        }
 
         try {
             $client = new Client([
@@ -202,5 +233,38 @@ class CeisaUserAuthService
         }
 
         return $data;
+    }
+
+    /**
+     * Build synthetic response untuk mock mode (auth endpoints).
+     *
+     * Endpoint yang dimock:
+     *  - /user/login        → return access_token + refresh_token
+     *  - /user/update-token → return access_token baru + refresh_token
+     *
+     * Format mock mengikuti kontrak openapi-auth (field umum: access_token,
+     * token, jwt, expires_in, token_type, refresh_token).
+     */
+    protected function buildMockAuthResponse(string $path, array $body): array
+    {
+        $now = now();
+        $username = $body['username'] ?? 'mock-user';
+
+        // Generate deterministic-ish token untuk mock (tidak aman, hanya testing).
+        $token = 'mock-' . sha1($username . $now->timestamp);
+        $refresh = 'mock-refresh-' . sha1($username . $now->timestamp . 'refresh');
+
+        return [
+            'access_token' => $token,
+            'token_type' => 'Bearer',
+            'expires_in' => 3600,
+            'expires_at' => $now->copy()->addHour()->toIso8601String(),
+            'refresh_token' => $refresh,
+            'user' => [
+                'username' => $username,
+                'name' => '[MOCK] ' . ucfirst($username),
+            ],
+            'message' => '[MOCK] Login berhasil. CEISA_MOCK_ENABLED=true, no real gateway call made.',
+        ];
     }
 }
