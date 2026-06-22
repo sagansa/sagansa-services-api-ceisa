@@ -31,6 +31,9 @@ Route::prefix('v1')->group(function () {
     // Fokus: GET status by nomorAju + draft/kirim/rekon/inward/outward.
     require __DIR__.'/api/v1/manifes.php';
 
+    // Respon & PDF (openapi v2 — respon-controller): 7 endpoint PDF binary.
+    require __DIR__.'/api/v1/respon.php';
+
     // Fase 3 — Outbound PIB submit
     require __DIR__.'/api/v1/pib.php';
 
