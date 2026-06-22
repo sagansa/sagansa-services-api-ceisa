@@ -243,12 +243,8 @@ class CeisaClient
             $response = $this->sendWithBearer('GET', $path, $service, [], $query);
             $code = $response->getStatusCode();
 
-            // Auto-retry sekali jika 401 (token expired).
-            if ($code === 401 && $this->oauth->getAccessToken() !== null) {
-                $this->oauth->invalidateCache();
-                $response = $this->sendWithBearer('GET', $path, $service, [], $query, forceRefresh: true);
-                $code = $response->getStatusCode();
-            }
+            // Pass-through mode: 401 retry tidak diperlukan di backend —
+            // frontend interceptor akan handle refresh & retry request.
 
             $durationMs = (int) ((microtime(true) - $start) * 1000);
             $content = (string) $response->getBody();
@@ -352,16 +348,8 @@ class CeisaClient
             $response = $this->sendWithBearer($method, $path, $service, $body, $query);
             $code = $response->getStatusCode();
 
-            // Auto-retry sekali jika 401 (kemungkinan token expire) dengan refresh paksa.
-            if ($code === 401 && $this->oauth->getAccessToken() !== null) {
-                Log::info('CeisaClient 401 — force-refresh OAuth token & retry', [
-                    'path' => $path,
-                    'method' => $method,
-                ]);
-                $this->oauth->invalidateCache();
-                $response = $this->sendWithBearer($method, $path, $service, $body, $query, forceRefresh: true);
-                $code = $response->getStatusCode();
-            }
+            // Pass-through mode: 401 retry tidak diperlukan di backend —
+            // frontend interceptor akan handle refresh & retry request.
 
             $durationMs = (int) ((microtime(true) - $start) * 1000);
             $raw = (string) $response->getBody();
@@ -408,11 +396,12 @@ class CeisaClient
     }
 
     /**
-     * Eksekusi request Guzzle dengan Bearer token terbaru.
+     * Eksekusi request Guzzle dengan Bearer token.
      *
-     * Token diambil dari CeisaOAuthService (cache atau refresh). Bila OAuth
-     * belum dikonfigurasi, header Authorization tidak ditambahkan (gateway
-     * akan menolak dengan 401 — caller wajib setup OAuth untuk endpoint BC).
+     * Token di-resolve via resolveBearerToken() yang memakai pola pass-through:
+     * frontend (mobile/web) simpan token BC di SecureStore lalu kirim via
+     * header Authorization ke backend SAGANSA. Backend meneruskan token
+     * tersebut ke gateway BC — tidak menyimpan username/password BC.
      */
     protected function sendWithBearer(
         string $method,
@@ -430,7 +419,7 @@ class CeisaClient
             $options[RequestOptions::JSON] = $body;
         }
 
-        $token = $this->oauth->getAccessToken($forceRefresh);
+        $token = $this->resolveBearerToken($forceRefresh);
         if (!empty($token)) {
             $options[RequestOptions::HEADERS]['Authorization'] = 'Bearer ' . $token;
         }
@@ -440,6 +429,34 @@ class CeisaClient
         $absoluteUrl = $this->buildAbsoluteUrl($service, $path);
 
         return $this->client($service)->request($method, $absoluteUrl, $options);
+    }
+
+    /**
+     * Resolve Bearer token untuk dikirim ke gateway BC (pass-through mode).
+     *
+     * Prioritas sumber token:
+     *  1. Incoming request Authorization header (pass-through dari frontend)
+     *     — frontend login BC → dapat token → kirim ke backend via
+     *       axios interceptor → backend teruskan ke BC. Aman: backend
+     *       tidak menyimpan kredensial BC.
+     *  2. Fallback: null (gateway akan balas 401, frontend interceptor
+     *     akan trigger refresh/re-login).
+     *
+     * @param  bool $forceRefresh Diabaikan di pass-through mode (frontend
+     *                            yang handle refresh via interceptor).
+     * @return string|null Token Bearer atau null.
+     */
+    protected function resolveBearerToken(bool $forceRefresh = false): ?string
+    {
+        // Baca Authorization header dari request yang sedang diproses.
+        // Laravel request() helper aman dipanggil dalam HTTP context.
+        $header = request()?->headers->get('Authorization');
+
+        if ($header && preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
+            return trim($m[1]);
+        }
+
+        return null;
     }
 
     /**
