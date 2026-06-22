@@ -45,10 +45,12 @@ class CeisaClient
     protected function client(string $service = 'manifes'): Client
     {
         $creds = $this->credentials->getCredentials();
-        $baseUrl = $this->credentials->buildServiceBaseUrl($service);
 
+        // ⚠️ TIDAK memakai 'base_uri' + relative path. Path endpoint CEISA
+        // umumnya diawali '/' (mis. "/status") sehingga Guzzle (RFC 3986)
+        // akan MENGGANTI seluruh base path → prefix "/v2/openapi" hilang.
+        // URL absolut disusun di buildAbsoluteUrl() dan dipakai per-request.
         return new Client([
-            'base_uri' => $baseUrl,
             'timeout' => (float) config('ceisa.http_timeout', 30),
             'connect_timeout' => (float) config('ceisa.connect_timeout', 10),
             'headers' => $this->buildHeaders($creds['api_key'] ?? ''),
@@ -58,6 +60,25 @@ class CeisaClient
                 CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
             ],
         ]);
+    }
+
+    /**
+     * Susun URL absolut: base service URL + path endpoint.
+     *
+     * Menggantikan pola base_uri + relative path Guzzle yang bermasalah saat
+     * path diawali '/' (RFC 3986 mengganti base path). Ini menjamin prefix
+     * "/v2/openapi" (atau path base lain) selalu dipertahankan.
+     */
+    protected function buildAbsoluteUrl(string $service, string $path): string
+    {
+        $baseUrl = rtrim($this->credentials->buildServiceBaseUrl($service), '/');
+
+        // Bila path sudah absolut (skema http/https), pakai apa adanya.
+        if (preg_match('#^https?://#i', $path)) {
+            return $path;
+        }
+
+        return $baseUrl . '/' . ltrim($path, '/');
     }
 
     /**
@@ -74,9 +95,10 @@ class CeisaClient
         $path = $path ?: (string) config('ceisa.test_path', '/v2/openapi/status/ping-test');
         $start = microtime(true);
         $gateway = $this->credentials->getGatewayUrl();
+        $absoluteUrl = $this->buildAbsoluteUrl('manifes', $path);
 
         try {
-            $response = $this->client('manifes')->get($path, [
+            $response = $this->client('manifes')->get($absoluteUrl, [
                 RequestOptions::HTTP_ERRORS => false,
             ]);
             $durationMs = (int) ((microtime(true) - $start) * 1000);
@@ -315,7 +337,11 @@ class CeisaClient
             $options[RequestOptions::HEADERS]['Authorization'] = 'Bearer ' . $token;
         }
 
-        return $this->client($service)->request($method, $path, $options);
+        // Pakai URL absolut (bukan base_uri + relative) agar prefix base path
+        // (mis. "/v2/openapi") tidak hilang saat path diawali '/'.
+        $absoluteUrl = $this->buildAbsoluteUrl($service, $path);
+
+        return $this->client($service)->request($method, $absoluteUrl, $options);
     }
 
     /**

@@ -122,8 +122,12 @@ class CeisaUserAuthService
         }
 
         try {
+            // ⚠️ JANGAN pakai base_uri + $path terpisah. Guzzle mengikuti
+            // RFC 3986 saat resolve: path dengan leading slash ("/user/login")
+            // akan MENGGANTI seluruh base path → "/user/login" (tanpa
+            // "/v1/openapi-auth"). Gateway BC lalu balas "Object Not Found".
+            // Karena itu kirim URL ABSOLUT ($fullUrl) sebagai target request.
             $client = new Client([
-                'base_uri' => $baseUrl,
                 'timeout' => (float) config('ceisa.http_timeout', 30),
                 'connect_timeout' => (float) config('ceisa.connect_timeout', 10),
                 'headers' => $this->buildHeaders(),
@@ -136,7 +140,7 @@ class CeisaUserAuthService
                 $options[RequestOptions::JSON] = $body;
             }
 
-            $response = $client->request($method, $path, $options);
+            $response = $client->request($method, $fullUrl, $options);
             $durationMs = (int) ((microtime(true) - $start) * 1000);
             $code = $response->getStatusCode();
             $raw = (string) $response->getBody();
