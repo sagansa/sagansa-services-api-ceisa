@@ -34,6 +34,9 @@ Route::prefix('v1')->group(function () {
     // Respon & PDF (openapi v2 — respon-controller): 7 endpoint PDF binary.
     require __DIR__.'/api/v1/respon.php';
 
+    // Referensi & Kurs (openapi v2 — referensi-controller): master data BC.
+    require __DIR__.'/api/v1/referensi.php';
+
     // Fase 3 — Outbound PIB submit
     require __DIR__.'/api/v1/pib.php';
 
