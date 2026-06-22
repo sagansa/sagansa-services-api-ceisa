@@ -72,6 +72,13 @@ class CeisaUserAuthController extends Controller
      * Saat gateway BC mengembalikan error (>=400) atau body kosong, sertakan
      * field `debug` berisi URL yang dihit + raw body BC agar mudah
      * didiagnosis. Field ini hanya muncul saat error (sukses tetap bersih).
+     *
+     * Normalisasi token (sejak pengetesan langsung ke gateway BC, 2026-06-22):
+     * Response BC sebenarnya MEMBUNGKUS token di field `item`:
+     *   { status: "success", message: "...", item: { access_token, refresh_token, ... } }
+     * Untuk konsistensi & backward-compat dengan client lama yang mengharapkan
+     * token di root, kita "flatten" item ke root saat sukses. Field `item`
+     * tetap dipertahankan apa adanya (tidak dihapus) demi traceability.
      */
     protected function proxyResponse(array $result): JsonResponse
     {
@@ -79,6 +86,15 @@ class CeisaUserAuthController extends Controller
         $body = $result['body'] ?? [];
         $raw = $result['raw'] ?? '';
         $isOk = $status >= 200 && $status < 300;
+
+        // Normalisasi: flatten item.* ke root agar token mudah di-parse client.
+        if ($isOk && is_array($body) && isset($body['item']) && is_array($body['item'])) {
+            foreach ($body['item'] as $key => $value) {
+                if (!array_key_exists($key, $body)) {
+                    $body[$key] = $value;
+                }
+            }
+        }
 
         $payload = [
             'status' => $status,
