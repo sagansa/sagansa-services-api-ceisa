@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Responses\ApiResponse;
 use App\Jobs\SubmitPibJob;
 use App\Models\PibDocument;
 use App\Services\PibSubmissionService;
@@ -11,10 +12,94 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Fase 3 (submit) + Fase 6 (list/detail PIB & NOTUL).
+ * Fase 3 (submit) + Fase 6 (list/detail PIB & NOTUL) + Wizard (draft/update).
  */
 class PibController extends Controller
 {
+    /**
+     * Wizard Step 0 — POST /v1/pib/draft
+     *
+     * Auto-create PIB draft dengan AJU auto-generated.
+     * Kode kantor diambil dari credentials aktif (ceisa_credentials).
+     *
+     * Dipanggil saat user buka PIB submit screen pertama kali.
+     */
+    public function draft(Request $request): JsonResponse
+    {
+        // Kode kantor: belum ada kolom kode_kantor di credentials table.
+        // Pakai env override (CEISA_DEFAULT_KANTOR) atau fallback "000000".
+        // TODO: tambah kolom kode_kantor ke ceisa_credentials saat UI
+        // credentials mendukung input kode kantor BC user.
+        $kodeKantor = (string) (config('ceisa.default_kantor') ?? env('CEISA_DEFAULT_KANTOR', '000000'));
+
+        // Generate AJU CEISA 4.0: KANTOR(6) + 07 + F + 70 + YYYYMMDD + SEQ(6)
+        $ajuNumber = $this->generateAjuNumber($kodeKantor);
+
+        $pib = PibDocument::create([
+            'aju_number'   => $ajuNumber,
+            'kantor_pabean' => $kodeKantor,
+            'status'       => 'draft',
+        ]);
+
+        return ApiResponse::success($pib->fresh(), 'PIB draft created', 201);
+    }
+
+    /**
+     * Wizard — PATCH /v1/pib/{id}
+     *
+     * Partial update PIB draft untuk auto-save wizard.
+     * Hanya field yang dikirim yang di-update.
+     */
+    public function updateDraft(int $id, Request $request): JsonResponse
+    {
+        $pib = PibDocument::find($id);
+        if (!$pib) {
+            return ApiResponse::error('PIB not found', 404);
+        }
+
+        // Validasi field yang boleh di-update via wizard.
+        $data = $request->validate([
+            'pelabuhan_muat'   => ['nullable', 'string', 'max:32'],
+            'pelabuhan_bongkar'=> ['nullable', 'string', 'max:32'],
+            'jenis_pib'        => ['nullable', 'string', 'max:4'],
+            'jenis_impor'      => ['nullable', 'string', 'max:4'],
+            'cara_pembayaran'  => ['nullable', 'string', 'max:4'],
+            'jenis_transaksi'  => ['nullable', 'string', 'max:16'],
+            'importir_npwp'    => ['nullable', 'string', 'max:32'],
+            'importir_name'    => ['nullable', 'string', 'max:255'],
+            'sarana_angkut'    => ['nullable', 'string', 'max:64'],
+            'aju_number'       => ['nullable', 'string', 'max:64'],
+        ]);
+
+        // Filter null values — hanya update field yang benar-benar dikirim.
+        $updateData = array_filter($data, fn ($v) => $v !== null);
+        $pib->update($updateData);
+
+        return ApiResponse::success($pib->fresh(), 'PIB draft updated');
+    }
+
+    /**
+     * Generate nomor AJU CEISA 4.0.
+     *
+     * Format: KANTOR(6) + KODE_DOK(07) + FUNGSI(F) + PEA(70) + YYYYMMDD(8) + SEQ(6) = 25 digit.
+     *
+     * Sequence: ambil count PIB untuk kantor+tanggal sebagai basis (inkremental).
+     */
+    private function generateAjuNumber(string $kodeKantor): string
+    {
+        $kantor = str_pad(substr($kodeKantor, 0, 6), 6, '0', STR_PAD_LEFT);
+        $today = now()->format('Ymd');
+
+        // Sequence: count existing PIB untuk kantor+tanggal + 1.
+        // Lebih presisi dari random — tapi tetap bukan sequence BC resmi
+        // (BC assign nomor final saat submit diterima).
+        $prefix = "{$kantor}07F70{$today}";
+        $count = PibDocument::where('aju_number', 'like', "{$prefix}%")->count();
+        $seq = str_pad((string) ($count + 1), 6, '0', STR_PAD_LEFT);
+
+        return "{$prefix}{$seq}";
+    }
+
     /**
      * Fase 3 — POST /v1/pib/submit
      * Terima data PIB dari ERP, enqueue async job.
