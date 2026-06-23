@@ -51,6 +51,23 @@ class ReferensiService extends CeisaBaseService
     }
 
     /**
+     * GET /referensi/kantor
+     *
+     * Daftar kantor pabean Bea Cukai (kode kantor + nama).
+     * Dipakai untuk dropdown "Kantor Pabean" di form PIB/PEB.
+     *
+     * @param string $kata Kata kunci pencarian opsional (nama/kode kantor).
+     *                     Bila kosong, BC mengembalikan daftar lengkap.
+     */
+    public function kantor(string $kata = ''): array
+    {
+        $query = $kata !== '' ? ['kata' => $kata] : [];
+        $response = $this->client->get($this->endpoint('ref_kantor'), $query, 'manifes');
+
+        return $this->wrapProxy($response, 'kantor');
+    }
+
+    /**
      * GET /referensi/tps-gudang/{kodeKantor}
      *
      * Daftar gudang TPS untuk kantor pabean tertentu.

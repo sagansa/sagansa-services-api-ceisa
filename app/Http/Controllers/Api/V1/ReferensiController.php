@@ -39,6 +39,17 @@ class ReferensiController extends Controller
     }
 
     /** GET /v1/referensi/pelabuhan-luar/{kata} */
+    /** GET /v1/referensi/kantor — daftar/search kantor pabean BC. */
+    public function kantor(Request $request): JsonResponse
+    {
+        $result = $this->service->kantor($request->get('kata', ''));
+
+        return $result['success']
+            ? ApiResponse::success($result['data'], 'Kantor Pabean')
+            : ApiResponse::error($result['error'] ?? 'Gagal mengambil data', $result['status_code'] ?: 502);
+    }
+
+    /** GET /v1/referensi/pelabuhan-luar/{kata} */
     public function pelabuhanLuar(string $kata): JsonResponse
     {
         $result = $this->service->pelabuhanLuar($kata);

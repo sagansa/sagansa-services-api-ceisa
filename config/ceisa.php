@@ -201,6 +201,10 @@ return [
         'ref_pelabuhan_dalam' => env('CEISA_REF_PELABUHAN_DALAM_PATH', '/referensi/pelabuhan-dalam-negeri/{kodeKantor}'),
         'ref_pelabuhan_luar'  => env('CEISA_REF_PELABUHAN_LUAR_PATH', '/referensi/pelabuhan-luar-negeri/{kata}'),
         'ref_tps_gudang'      => env('CEISA_REF_TPS_GUDANG_PATH', '/referensi/tps-gudang/{kodeKantor}'),
+        // Kantor Pabean (kode kantor Bea Cukai, 6 digit).
+        // Dipakai untuk lookup dropdown "Kantor Pabean" di form PIB/PEB.
+        // Endpoint BC: GET /referensi/kantor
+        'ref_kantor'          => env('CEISA_REF_KANTOR_PATH', '/referensi/kantor'),
 
         /*
         |======================================================================

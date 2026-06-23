@@ -17,6 +17,10 @@ use Illuminate\Support\Facades\Route;
  * Dipakai operator: lookup master data + kurs NDPBM + hitung pungutan PIB.
  */
 Route::prefix('referensi')->group(function () {
+    // Kantor Pabean — daftar/search kantor Bea Cukak untuk dropdown form PIB/PEB.
+    // GET /v1/referensi/kantor?kata=jakarta → search by nama/kode.
+    Route::get('/kantor', [ReferensiController::class, 'kantor'])->name('ref.kantor');
+
     Route::get('/pelabuhan-dalam/{kodeKantor}', [ReferensiController::class, 'pelabuhanDalam'])
         ->where('kodeKantor', '[0-9A-Za-z]+')
         ->name('ref.pelabuhan-dalam');
