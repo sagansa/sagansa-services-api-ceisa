@@ -179,6 +179,105 @@ class CeisaClient
     }
 
     /**
+     * POST multipart (file upload) ke gateway BC.
+     *
+     * Berbeda dari post() yang kirim JSON, method ini kirim multipart/form-data
+     * untuk upload file binary (invoice, BL, packing list, DOKAP/NPD).
+     *
+     * @param  string $service  'manifes' | 'pib'.
+     * @param  array  $files    Format: [['name' => 'file', 'contents' => $binaryData, 'filename' => 'invoice.pdf'], ...]
+     * @param  array  $formFields Field form tambahan (non-file), mis. ['nomorAju' => '...'].
+     * @param  array  $query    Query string params.
+     * @return array{status: int, body: array, raw: string}
+     */
+    public function postMultipart(
+        string $path,
+        array $files,
+        array $formFields = [],
+        string $service = 'manifes',
+        array $query = [],
+    ): array {
+        $start = microtime(true);
+        $logPayload = ['method' => 'POST(multipart)', 'path' => $path, 'service' => $service,
+            'files' => array_map(fn ($f) => $f['filename'] ?? '?', $files), 'fields' => array_keys($formFields), 'query' => $query];
+
+        if ($this->isMockEnabled()) {
+            $mockBody = [
+                'status' => 'OK',
+                'message' => '[MOCK] File uploaded (CEISA_MOCK_ENABLED=true). No real gateway call.',
+                'uploadedFiles' => array_map(fn ($f) => $f['filename'] ?? '?', $files),
+                'receivedAt' => now()->toIso8601String(),
+            ];
+            $durationMs = (int) ((microtime(true) - $start) * 1000);
+            CeisaApiLog::logOutbound($path, 'POST', $logPayload, $mockBody, 200, $durationMs);
+
+            return ['status' => 200, 'body' => $mockBody, 'raw' => json_encode($mockBody)];
+        }
+
+        $endpoint = $path;
+
+        try {
+            $token = $this->resolveBearerToken();
+            $headers = [
+                'Accept' => 'application/json',
+                'beacukai-api-key' => $this->credentials->getApiKey(),
+            ];
+            if (!empty($token)) {
+                $headers['Authorization'] = 'Bearer ' . $token;
+            }
+
+            $absoluteUrl = $this->buildAbsoluteUrl($service, $path);
+
+            // Build multipart array for Guzzle.
+            $multipart = [];
+            foreach ($formFields as $name => $value) {
+                $multipart[] = ['name' => $name, 'contents' => (string) $value];
+            }
+            foreach ($files as $file) {
+                $multipart[] = [
+                    'name' => $file['name'] ?? 'file',
+                    'contents' => $file['contents'],
+                    'filename' => $file['filename'] ?? 'upload.bin',
+                    'headers' => ['Content-Type' => $file['contentType'] ?? 'application/octet-stream'],
+                ];
+            }
+
+            if (!empty($query)) {
+                $absoluteUrl .= (str_contains($absoluteUrl, '?') ? '&' : '?') . http_build_query($query);
+            }
+
+            $client = new Client([
+                'timeout' => (float) config('ceisa.http_timeout', 30),
+                'connect_timeout' => (float) config('ceisa.connect_timeout', 10),
+                'version' => 1.1,
+                'curl' => [CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1],
+            ]);
+
+            $response = $client->request('POST', $absoluteUrl, [
+                RequestOptions::HTTP_ERRORS => false,
+                RequestOptions::HEADERS => $headers,
+                RequestOptions::MULTIPART => $multipart,
+            ]);
+
+            $code = $response->getStatusCode();
+            $durationMs = (int) ((microtime(true) - $start) * 1000);
+            $raw = (string) $response->getBody();
+
+            $body = json_decode($raw, true) ?? ['raw' => $raw];
+
+            CeisaApiLog::logOutbound($endpoint, 'POST', $logPayload, $body, $code, $durationMs);
+
+            return ['status' => $code, 'body' => is_array($body) ? $body : ['raw' => $body], 'raw' => $raw];
+        } catch (\Throwable $e) {
+            $durationMs = (int) ((microtime(true) - $start) * 1000);
+            CeisaApiLog::logOutbound($endpoint, 'POST', $logPayload, ['error' => $e->getMessage()], 0, $durationMs, error: $e->getMessage());
+            Log::error('CeisaClient postMultipart failed', ['path' => $path, 'error' => $e->getMessage()]);
+
+            return ['status' => 0, 'body' => ['error' => $e->getMessage()], 'raw' => ''];
+        }
+    }
+
+    /**
      * GET request dengan auto-logging + auto-auth-retry.
      *
      * @param string $service 'manifes' | 'pib'.
@@ -196,6 +295,18 @@ class CeisaClient
     public function delete(string $path, array $query = [], string $service = 'manifes'): array
     {
         return $this->request('DELETE', $path, $service, [], $query);
+    }
+
+    /**
+     * PUT request dengan auto-logging + auto-auth-retry.
+     *
+     * Dipakai oleh openapi-cukai untuk update Mesin (PUT /h2h/mesin/{id}).
+     *
+     * @param string $service 'manifes' | 'pib' | 'cukai'.
+     */
+    public function put(string $path, array $payload = [], string $service = 'manifes', array $query = []): array
+    {
+        return $this->request('PUT', $path, $service, $payload, $query);
     }
 
     /**

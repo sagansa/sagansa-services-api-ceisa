@@ -65,10 +65,18 @@ return [
     | agar pemanggilan CeisaClient->client('manifes') lama tidak break, tetapi
     | sekarang keduanya resolve ke openapi_path yang sama (empty string dari
     | sudut pandang service_paths, base path ditangani di buildServiceBaseUrl).
+    |
+    | Pengecualian: 'cukai' tetap punya base path terpisah (/v1/openapi-cukai)
+    | karena openapi-cukai adalah API berbeda (Host to Host Cukai, mesin
+    | produksi & GPS BKC) — tidak di-unify ke /v2/openapi.
     */
     'service_paths' => [
         'manifes' => env('CEISA_MANIFES_PATH', ''),
         'pib'     => env('CEISA_PIB_PATH', ''),
+        // API Host to Host Cukai (BKC) — base path terpisah dari openapi v2.
+        // Sumber: portal BC → openapi-cukai v1.0
+        //   server produksi = https://apis-gw.beacukai.go.id/v1/openapi-cukai
+        'cukai'   => env('CEISA_CUKAI_PATH', '/v1/openapi-cukai'),
     ],
 
     /*
@@ -257,6 +265,43 @@ return [
         |======================================================================
         */
         'consumer_webhook_check' => env('CEISA_CONSUMER_WEBHOOK_CHECK_PATH', '/consumer-webhook/check-log'),
+
+        /*
+        |======================================================================
+        | CUKAI (openapi-cukai v1.0 — Host to Host Cukai / BKC)
+        |======================================================================
+        | API terpisah dari /v2/openapi. Base path: /v1/openapi-cukai
+        | (di-resolve via service_paths.cukai di buildServiceBaseUrl).
+        |
+        | Fokus: monitoring & pelaporan mesin produksi Barang Kena Cukai
+        | (rokok, MMEA/alkohol, mirasantisa) + tracking GPS lokasi mesin.
+        |
+        | Sumber: portal BC → openapi-cukai v1.0 (openapicukai_openapi.json)
+        |   server produksi = https://apis-gw.beacukai.go.id/v1/openapi-cukai
+        |
+        | 13 endpoint dikelompokkan 4 kategori:
+        |   GPS        → 3 endpoint (list, by-id, create)
+        |   Mesin      → 4 endpoint (list, create, update, delete)
+        |   Produksi   → 5 endpoint (list + 4 create batang/kemasan single/batch)
+        |   Referensi  → 4 endpoint (jenis-mesin, tipe-mesin, kondisi, status-kepemilikan)
+        */
+        // GPS — tracking lokasi mesin produksi
+        'cukai_gps_list'           => env('CEISA_CUKAI_GPS_LIST_PATH', '/h2h/gps'),
+        'cukai_gps_by_id'          => env('CEISA_CUKAI_GPS_BY_ID_PATH', '/h2h/gps/{id}'),
+        // Mesin — CRUD mesin produksi BKC
+        'cukai_mesin_list'         => env('CEISA_CUKAI_MESIN_LIST_PATH', '/h2h/mesin'),
+        'cukai_mesin_by_id'        => env('CEISA_CUKAI_MESIN_BY_ID_PATH', '/h2h/mesin/{id}'),
+        // Produksi — laporan produksi (batang = per keping, kemasan = per pack)
+        'cukai_produksi_list'      => env('CEISA_CUKAI_PRODUKSI_LIST_PATH', '/h2h/mesin/produksi'),
+        'cukai_produksi_batang'    => env('CEISA_CUKAI_PRODUKSI_BATANG_PATH', '/h2h/mesin/produksi/batang'),
+        'cukai_produksi_batang_batch' => env('CEISA_CUKAI_PRODUKSI_BATANG_BATCH_PATH', '/h2h/mesin/produksi/batang/batch'),
+        'cukai_produksi_kemasan'   => env('CEISA_CUKAI_PRODUKSI_KEMASAN_PATH', '/h2h/mesin/produksi/kemasan'),
+        'cukai_produksi_kemasan_batch' => env('CEISA_CUKAI_PRODUKSI_KEMASAN_BATCH_PATH', '/h2h/mesin/produksi/kemasan/batch'),
+        // Referensi — master data untuk dropdown form mesin
+        'cukai_ref_jenis_mesin'    => env('CEISA_CUKAI_REF_JENIS_MESIN_PATH', '/h2h/referensi/jenis-mesin'),
+        'cukai_ref_tipe_mesin'     => env('CEISA_CUKAI_REF_TIPE_MESIN_PATH', '/h2h/referensi/tipe-mesin'),
+        'cukai_ref_kondisi'        => env('CEISA_CUKAI_REF_KONDISI_PATH', '/h2h/referensi/kondisi'),
+        'cukai_ref_status_kepemilikan' => env('CEISA_CUKAI_REF_STATUS_KEPEMILIKAN_PATH', '/h2h/referensi/status-kepemilikan'),
 
         /*
         |======================================================================

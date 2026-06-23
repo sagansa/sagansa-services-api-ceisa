@@ -77,11 +77,11 @@ class FcmChannel implements NotificationChannelInterface
     protected function buildPayload(PibDocument $doc, string $event, array $data): array
     {
         $title = $doc->is_underprice
-            ? '⚠️ UNDERPRICE Terdeteksi!'
+            ? '📋 NOTUL / SPTNP Diterima'
             : "PIB {$event}";
 
         $body = $doc->is_underprice
-            ? "PIB {$doc->aju_number} terkena NOTUL dengan koreksi nilai pabean."
+            ? "PIB {$doc->aju_number} memerlukan penyelesaian NOTUL/SPTNP. Segera cek detail koreksi nilai pabean."
             : "PIB {$doc->aju_number} status: {$doc->status}";
 
         // Truncate body agar total payload < 4KB

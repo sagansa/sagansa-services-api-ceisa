@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Mail;
  * Fase 5.3 — Email (SMTP) channel.
  *
  * Template:
- * - NOTUL/underprice → emails.notul-pib (detail denda, selisih, rekening SSP)
+ * - NOTUL/SPTNP → emails.notul-pib (detail denda, selisih, rekening SSP)
  * - Status lain → emails.pib-status (ringkas)
  */
 class EmailChannel implements NotificationChannelInterface

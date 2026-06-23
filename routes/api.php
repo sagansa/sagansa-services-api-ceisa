@@ -37,6 +37,22 @@ Route::prefix('v1')->group(function () {
     // Referensi & Kurs (openapi v2 — referensi-controller): master data BC.
     require __DIR__.'/api/v1/referensi.php';
 
+    // File Upload (openapi v2 — file-controller): upload dokumen pendukung.
+    require __DIR__.'/api/v1/file.php';
+
+    // Gate TPB (openapi v2 — gate-controller): gate-in/out kemasan & kontainer.
+    require __DIR__.'/api/v1/gate.php';
+
+    // CNPIBK (openapi v2 — cnpibk-controller): barang kiriman e-commerce.
+    require __DIR__.'/api/v1/cnpibk.php';
+
+    // Cukai (openapi-cukai v1.0 — Host to Host Cukai / BKC):
+    // monitoring mesin produksi & GPS untuk Barang Kena Cukai.
+    require __DIR__.'/api/v1/cukai.php';
+
+    // E-Monitoring H@H (openapi v2 — e-monitoring-controller): laporan TPB.
+    require __DIR__.'/api/v1/emonitoring.php';
+
     // Fase 3 — Outbound PIB submit
     require __DIR__.'/api/v1/pib.php';
 
