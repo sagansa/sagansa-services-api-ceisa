@@ -11,6 +11,10 @@ Route::prefix('pib')->group(function () {
     Route::post('/draft', [PibController::class, 'draft'])->name('pib.draft');
     Route::patch('/{id}', [PibController::class, 'updateDraft'])->name('pib.update-draft');
 
+    // Import-by-AJU — sync dokumen CEISA portal ke DB lokal + recovery
+    // state divergence (submit lokal 'failed' tapi BC 'perekaman dokumen').
+    Route::post('/sync-by-aju', [PibController::class, 'syncByAju'])->name('pib.sync-by-aju');
+
     // Fase 3 — Submit ke BC
     Route::post('/submit', [PibController::class, 'submit'])->name('pib.submit');
     Route::post('/{id}/retry', [PibController::class, 'retry'])->name('pib.retry');

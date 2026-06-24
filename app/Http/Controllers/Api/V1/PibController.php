@@ -7,12 +7,14 @@ use App\Http\Responses\ApiResponse;
 use App\Jobs\SubmitPibJob;
 use App\Models\PibDocument;
 use App\Services\PibSubmissionService;
+use App\Services\StatusService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Fase 3 (submit) + Fase 6 (list/detail PIB & NOTUL) + Wizard (draft/update).
+ * Fase 3 (submit) + Fase 6 (list/detail PIB & NOTUL) + Wizard (draft/update)
+ * + Import-by-AJU (sync dokumen CEISA portal ke DB lokal).
  */
 class PibController extends Controller
 {
@@ -198,6 +200,38 @@ class PibController extends Controller
         $result = $service->retry($id);
 
         return response()->json($result, $result['success'] ? 200 : 422);
+    }
+
+    /**
+     * Import-by-AJU — POST /v1/pib/sync-by-aju
+     *
+     * Sync satu dokumen dari BC gateway ke DB lokal berdasarkan nomor AJU.
+     * Memenuhi dua kasus:
+     *  1. Dokumen yang dibuat di CEISA portal (bukan via SAGANSA) — AJU-nya
+     *     tidak tercatat di pib_documents, jadi tidak muncul di list.
+     *  2. Recovery state divergence — submit lokal 'failed' tapi BC bilang
+     *     dokumen sudah direkam/valid.
+     *
+     * Delegasi ke StatusService::syncByAju() (fetch BC + upsert + history).
+     */
+    public function syncByAju(Request $request, StatusService $status): JsonResponse
+    {
+        $data = $request->validate([
+            'aju_number' => ['required', 'string', 'min:6', 'max:64'],
+        ]);
+
+        $result = $status->syncByAju($data['aju_number']);
+
+        if (!$result['success']) {
+            return ApiResponse::error(
+                $result['error'] ?? 'Gagal sync dari BC.',
+                $result['status_code'] >= 400 && $result['status_code'] < 600
+                    ? $result['status_code']
+                    : 502,
+            );
+        }
+
+        return ApiResponse::success($result, 'Dokumen berhasil di-sync dari BC.');
     }
 
     /**

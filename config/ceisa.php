@@ -422,9 +422,103 @@ return [
     |--------------------------------------------------------------------------
     | Status → urgency classification (PRD 2.2)
     |--------------------------------------------------------------------------
+    |
+    | Klasifikasi berdasarkan DUA sumber:
+    |  1. Kode Proses CEISA 4.0 resmi (numeric 3-digit) — sumber: tabel
+    |     referensi status CEISA 4.0 (lihat 'kode_proses' di bawah).
+    |  2. Keyword string (legacy PRD): AJU, HIJAU, MERAH, NOTUL, dll —
+    |     dipakai bila BC return kodeStatus sebagai teks, bukan kode numeric.
+    |
+    | classifyUrgency() di WebhookPayloadParser & StatusService mencocokkan
+    | KEDUA sumber: cek kode numeric dulu, lalu keyword.
     */
     'urgency' => [
-        'normal' => ['AJU', 'HIJAU', 'SPPB'],
-        'urgent' => ['MERAH', 'NOTUL', 'SPTNP', 'DENDA', 'SSP', 'SPP'],
+        // Normal: dokumen dalam proses normal / sudah direkam / selesai.
+        'normal' => ['AJU', 'HIJAU', 'SPPB', 'REKAM', 'PEREKAMAN', 'RECORD', 'PROSES'],
+        // Urgent: dokumen ditolak / gagal / butuh tindakan.
+        'urgent' => ['MERAH', 'NOTUL', 'SPTNP', 'DENDA', 'SSP', 'SPP', 'GAGAL', 'FAILED', 'REJECT'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Kode Proses CEISA 4.0 (referensi resmi)
+    |--------------------------------------------------------------------------
+    |
+    | Mapping kode proses numeric 3-digit → label + urgency + tahap.
+    | Sumber: tabel referensi status sistem CEISA 4.0 (Referensi Status).
+    |
+    | Dipakai oleh StatusService::resolveKodeProses() untuk:
+    |  - Memberi label human-readable (mis. "001" → "Perekaman Dokumen").
+    |  - Klasifikasi urgency (normal/urgent/terminal).
+    |  - Menentukan apakah dokumen sudah terminal (selesai/batal).
+    |
+    | Tahap (stage) membantu frontend menentukan apakah refresh status
+    | masih relevan (terminal = tidak perlu refresh lagi).
+    */
+    'kode_proses' => [
+        // === Tahap Perekaman & Penerimaan (normal, aktif) ===
+        '001' => ['label' => 'Perekaman Dokumen',          'urgency' => 'normal',   'stage' => 'proses'],
+        '100' => ['label' => 'Penerimaan Data',            'urgency' => 'normal',   'stage' => 'proses'],
+        '104' => ['label' => 'Kirim Dokumen Ke INSW',      'urgency' => 'normal',   'stage' => 'proses'],
+        '105' => ['label' => 'LNSW - Penerimaan Dokumen',  'urgency' => 'normal',   'stage' => 'proses'],
+        '106' => ['label' => 'LNSW - Cek Mandatory',       'urgency' => 'normal',   'stage' => 'proses'],
+        '107' => ['label' => 'LNSW - Analyzing Point',     'urgency' => 'normal',   'stage' => 'proses'],
+        '108' => ['label' => 'LNSW - Konfirmasi Skep',     'urgency' => 'normal',   'stage' => 'proses'],
+        '110' => ['label' => 'Validasi',                   'urgency' => 'normal',   'stage' => 'proses'],
+        '111' => ['label' => 'Proses Validasi',            'urgency' => 'normal',   'stage' => 'proses'],
+
+        // === Reject (urgent) ===
+        '120' => ['label' => 'Reject',                     'urgency' => 'urgent',   'stage' => 'terminal'],
+
+        // === Tahap Analisis & Penjaluran (normal) ===
+        '130' => ['label' => 'Penerimaan Dokumen',         'urgency' => 'normal',   'stage' => 'proses'],
+        '200' => ['label' => 'Analyzing Point',            'urgency' => 'normal',   'stage' => 'proses'],
+        '205' => ['label' => 'Pengecekan Jaminan',         'urgency' => 'normal',   'stage' => 'proses'],
+        '210' => ['label' => 'Payment Verification',       'urgency' => 'normal',   'stage' => 'proses'],
+        '220' => ['label' => 'Pre-Notification',           'urgency' => 'normal',   'stage' => 'proses'],
+        '225' => ['label' => 'Approval Similarity',        'urgency' => 'normal',   'stage' => 'proses'],
+        '230' => ['label' => 'Siap Jalur',                 'urgency' => 'normal',   'stage' => 'proses'],
+        '240' => ['label' => 'Penjaluran',                 'urgency' => 'normal',   'stage' => 'proses'],
+
+        // === Pemeriksaan (normal → bisa urgent bila merah) ===
+        '300' => ['label' => 'Pemeriksaan Fisik',          'urgency' => 'normal',   'stage' => 'proses'],
+        '330' => ['label' => 'Pemeriksaan Barang',         'urgency' => 'normal',   'stage' => 'proses'],
+        '400' => ['label' => 'Pemeriksaan Dokumen',        'urgency' => 'normal',   'stage' => 'proses'],
+        '410' => ['label' => 'INP',                        'urgency' => 'normal',   'stage' => 'proses'],
+        '415' => ['label' => 'LAB',                        'urgency' => 'normal',   'stage' => 'proses'],
+
+        // === SPTNP (urgent — ketidakpatuhan) ===
+        '440' => ['label' => 'SPTNP',                      'urgency' => 'urgent',   'stage' => 'proses'],
+
+        // === Gate TPS/TPB (normal, proses barang) ===
+        '500' => ['label' => 'Gate In TPS',                'urgency' => 'normal',   'stage' => 'proses'],
+        '501' => ['label' => 'Gate Out TPS',               'urgency' => 'normal',   'stage' => 'proses'],
+        '502' => ['label' => 'Pelekatan Segel',            'urgency' => 'normal',   'stage' => 'proses'],
+        '503' => ['label' => 'Pembukaan Segel',            'urgency' => 'normal',   'stage' => 'proses'],
+        '510' => ['label' => 'Gate In TPB',                'urgency' => 'normal',   'stage' => 'proses'],
+        '511' => ['label' => 'Pembongkaran',               'urgency' => 'normal',   'stage' => 'proses'],
+        '512' => ['label' => 'Stuffing',                   'urgency' => 'normal',   'stage' => 'proses'],
+        '513' => ['label' => 'Area Transit',               'urgency' => 'normal',   'stage' => 'proses'],
+        '514' => ['label' => 'Gate Out TPB',               'urgency' => 'normal',   'stage' => 'proses'],
+
+        // === Terminal sukses (selesai) ===
+        '800' => ['label' => 'Selesai Proses',             'urgency' => 'normal',   'stage' => 'terminal'],
+
+        // === Pembatalan (terminal) ===
+        '900' => ['label' => 'Pembatalan',                 'urgency' => 'normal',   'stage' => 'terminal'],
+
+        // === Penelitian & Unit Pengawas ===
+        '981' => ['label' => 'Penelitian Unit Pengawas',   'urgency' => 'normal',   'stage' => 'proses'],
+
+        // === Tahap Perbaikan (960-971) ===
+        '960' => ['label' => 'Perekaman Perbaikan Portal', 'urgency' => 'normal',   'stage' => 'proses'],
+        '961' => ['label' => 'Penelitian Perbaikan',       'urgency' => 'normal',   'stage' => 'proses'],
+        '962' => ['label' => 'Perekaman Perbaikan Inhouse','urgency' => 'normal',   'stage' => 'proses'],
+        '963' => ['label' => 'Validasi Perbaikan',         'urgency' => 'normal',   'stage' => 'proses'],
+        '965' => ['label' => 'Penolakan Perbaikan',        'urgency' => 'urgent',   'stage' => 'proses'],
+        '966' => ['label' => 'Persetujuan Perbaikan',      'urgency' => 'normal',   'stage' => 'proses'],
+        '969' => ['label' => 'Pembatalan Perbaikan',       'urgency' => 'normal',   'stage' => 'terminal'],
+        '970' => ['label' => 'Perbaikan RH',               'urgency' => 'normal',   'stage' => 'proses'],
+        '971' => ['label' => 'Perbaikan RH Selesai',       'urgency' => 'normal',   'stage' => 'terminal'],
     ],
 ];
