@@ -92,6 +92,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | OSS/RBA API URL (NIB lookup)
+    |--------------------------------------------------------------------------
+    | API publik OSS untuk lookup data perusahaan berdasarkan NIB.
+    | Bila kosong/null, OssService pakai fallback data demo.
+    | API publik OSS: https://pbcb.oss.go.id/oss/api/v1/nib
+    */
+    'oss_api_url' => env('OSS_API_URL'),
+
+    /*
+    |--------------------------------------------------------------------------
     | CEISA API Endpoints v2 (path relatif terhadap {gateway}{openapi_path})
     |--------------------------------------------------------------------------
     | Sumber: doc/json/Export_openapi_v2_*.json (OpenAPI 3.0.1, version 2.0).

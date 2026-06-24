@@ -50,6 +50,9 @@ Route::prefix('v1')->group(function () {
     // monitoring mesin produksi & GPS untuk Barang Kena Cukai.
     require __DIR__.'/api/v1/cukai.php';
 
+    // OSS/RBA — lookup data perusahaan via NIB (auto-fill form PIB Entitas).
+    require __DIR__.'/api/v1/oss.php';
+
     // E-Monitoring H@H (openapi v2 — e-monitoring-controller): laporan TPB.
     require __DIR__.'/api/v1/emonitoring.php';
 
