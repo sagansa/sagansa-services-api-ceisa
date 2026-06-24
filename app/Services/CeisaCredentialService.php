@@ -38,13 +38,26 @@ class CeisaCredentialService
         $active = CeisaCredential::active();
 
         if ($active) {
+            $apiKey = $active->api_key ?? '';
+            $appId  = $active->application_id ?? '';
+
+            // Fallback ke env bila DB credential kosong/korup (decryption fail).
+            // Ini mencegah BC return "Unauthorized application request" saat
+            // DB production belum diset API key tapi .env sudah punya.
+            if (empty($apiKey)) {
+                $apiKey = (string) (config('ceisa.api_key') ?? env('CEISA_API_KEY', ''));
+            }
+            if (empty($appId)) {
+                $appId = (string) (config('ceisa.application_id') ?? env('CEISA_APPLICATION_ID', ''));
+            }
+
             return [
-                'application_id'   => $active->application_id ?? '', // auto-decrypted via cast
-                'api_key'          => $active->api_key ?? '',        // auto-decrypted via cast
-                'client_id'        => $active->client_id ?? '',     // auto-decrypted via cast
-                'client_secret'    => $active->client_secret ?? '', // auto-decrypted via cast
+                'application_id'   => $appId,
+                'api_key'          => $apiKey,
+                'client_id'        => $active->client_id ?? '',
+                'client_secret'    => $active->client_secret ?? '',
                 'token_url'        => $active->token_url ?? '',
-                'access_token'     => $active->access_token ?? '',  // auto-decrypted via cast
+                'access_token'     => $active->access_token ?? '',
                 'token_expires_at' => $active->token_expires_at?->toIso8601String(),
                 'gateway_mode'     => $active->gateway_mode,
             ];
